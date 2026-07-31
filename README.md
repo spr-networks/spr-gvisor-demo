@@ -29,8 +29,9 @@ The one `scratch` image contains:
 
 The Docker command is deliberately `/unused`: the trusted SPR krun policy
 selects `/tamago-kernel` as the VM kernel before a container process could run.
-If `/unused` is ever executed and exits with signal 11, the external-kernel
-policy was not supplied and the image was started as an ordinary container.
+If `/unused` is ever executed and exits with `SIGILL`/`SIGSEGV`, the
+external-kernel policy was not supplied and the image was started as an
+ordinary Linux process.
 
 ## SPR runtime prerequisite
 
@@ -51,11 +52,10 @@ krun.kernel_path: /tamago-kernel
 krun.kernel_format: "0"
 ```
 
-The accompanying
-[`patches/spr-external-kernel-policy.patch`](patches/spr-external-kernel-policy.patch)
-adds those two trusted policy fields to SPR. Apply it to the matching
-`spr-networks/super` tree and rebuild `superd`. The runtime then supplies both
-the external raw kernel and SPR-owned listening Unix socket to libkrun.
+The [`tamago` branch of `spr-networks/super`](https://github.com/spr-networks/super/tree/tamago)
+adds those two trusted policy fields to `superd`. Use that branch and rebuild
+the `superd` service. The runtime then supplies both the external raw kernel
+and SPR-owned listening Unix socket to libkrun.
 
 The checked-in `.krun_vm.json` is only an equivalent external-kernel hint for
 testing with an unmodified upstream `krun` runtime. Hardened SPR ignores it.
@@ -108,10 +108,10 @@ pull requests and publishes immutable `sha-<commit>` tags plus `latest` from
 
 ## Run in SPR
 
-Install the standard `spr-krun-runtime`, apply the external-kernel manager
-policy patch above, and install this repository through **Plugins → + New
-Plugin**. The supported launch path is SPR's plugin manager because it signs
-the trusted runtime override and creates the SPR-owned Unix socket mapping.
+Install the standard `spr-krun-runtime`, run `superd` from the SPR `tamago`
+branch above, and install this repository through **Plugins → + New Plugin**.
+The supported launch path is SPR's plugin manager because it signs the trusted
+runtime override and creates the SPR-owned Unix socket mapping.
 
 `plugin.json` selects the KVM runtime and adds **spr-tamago-demo** to the
 sidebar. `docker-compose-kvm.yml` contains exactly one `spr-krun` service and
