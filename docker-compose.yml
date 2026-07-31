@@ -8,6 +8,10 @@ services:
     container_name: spr-tamago-demo
     platform: linux/arm64
     image: ghcr.io/spr-networks/spr-tamago-demo:latest
+    # Custom plugins are started with `docker compose up -d`. Ensure the
+    # mutable release tag is refreshed instead of silently reusing an older
+    # cached kernel image.
+    pull_policy: ${PULL_POLICY:-always}
     build:
       context: "${BUILDCTX:-.}"
       target: kernel
