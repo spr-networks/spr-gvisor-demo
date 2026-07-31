@@ -50,7 +50,10 @@ for name in DOCKERFILE_SYNTAX BUILDKIT_REF BINFMT_REF GO_REF; do
 done
 
 go_version="$(awk '$1 == "go" { print $2 }' go.mod)"
-tamago_version="$(awk '$1 == "github.com/usbarmory/tamago" { print $2 }' go.mod)"
+tamago_version="$(awk '
+  $1 == "github.com/usbarmory/tamago" { print $2; exit }
+  $1 == "require" && $2 == "github.com/usbarmory/tamago" { print $3; exit }
+' go.mod)"
 
 [[ "${go_version}" == "${GO_VERSION}" ]]
 [[ "${tamago_version}" == "${TAMAGO_VERSION}" ]]
