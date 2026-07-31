@@ -1,0 +1,115 @@
+name: Build and verify
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Load reproducible inputs
+        run: grep -E '^[A-Z][A-Z0-9_]*=' reproducible.env >>"${GITHUB_ENV}"
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run static, unit, and Compose checks
+        run: ./test.sh
+
+      - name: Ensure tests did not change tracked files
+        run: git diff --exit-code
+
+  reproducibility:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Load reproducible inputs
+        run: grep -E '^[A-Z][A-Z0-9_]*=' reproducible.env >>"${GITHUB_ENV}"
+
+      - name: Install pinned ARM64 binfmt
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          image: ${{ env.BINFMT_REF }}
+          platforms: arm64
+
+      - name: Install pinned Buildx and BuildKit
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          driver-opts: image=${{ env.BUILDKIT_REF }}
+
+      - name: Rebuild and compare OCI manifests
+        run: ./reproducibility_test.sh
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: reproducibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Load reproducible inputs
+        run: grep -E '^[A-Z][A-Z0-9_]*=' reproducible.env >>"${GITHUB_ENV}"
+
+      - name: Install pinned ARM64 binfmt
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          image: ${{ env.BINFMT_REF }}
+          platforms: arm64
+
+      - name: Install pinned Buildx and BuildKit
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          driver-opts: image=${{ env.BUILDKIT_REF }}
+
+      - name: Sign in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish commit-addressed images
+        env:
+          REPOSITORY: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA:0:12}"
+          repository="${REPOSITORY,,}"
+          export SPR_TAMAGO_KERNEL_IMAGE="${repository}:kernel-sha-${short_sha}"
+          export SPR_TAMAGO_GATEWAY_IMAGE="${repository}:gateway-sha-${short_sha}"
+          ./build_docker_compose.sh --push
+          docker buildx imagetools create \
+            --tag "${repository}:kernel-latest" \
+            "${SPR_TAMAGO_KERNEL_IMAGE}"
+          docker buildx imagetools create \
+            --tag "${repository}:gateway-latest" \
+            "${SPR_TAMAGO_GATEWAY_IMAGE}"

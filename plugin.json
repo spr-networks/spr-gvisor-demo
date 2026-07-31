@@ -1,0 +1,16 @@
+{
+  "Name": "spr-tamago-demo",
+  "Runtime": "kvm",
+  "UnixPath": "/state/plugins/spr-tamago-demo/socket.sock",
+  "URI": "spr-tamago-demo",
+  "HasUI": true,
+  "Icon": "Terminal",
+  "SandboxedUI": true,
+  "Enabled": true,
+  "NetworkCapabilities": {
+    "Interface": "spr-tamago",
+    "DeviceMAC": "02:53:50:52:54:47",
+    "Policies": [],
+    "Groups": []
+  }
+}

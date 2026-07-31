@@ -1,0 +1,40 @@
+services:
+  spr-tamago-demo-kernel:
+    extends:
+      file: docker-compose.yml
+      service: spr-tamago-demo-kernel
+    image: ghcr.io/spr-networks/spr-tamago-demo:kernel-latest
+    build: !reset null
+    runtime: ${SPR_KRUN_RUNTIME:-spr-krun}
+    annotations:
+      krun.cpus: "1"
+      krun.ram_mib: "256"
+      krun.kernel_path: "/tamago-kernel"
+      krun.kernel_format: "0"
+      krun.tap_name: "kruntap0"
+      krun.net_uplink: "eth0"
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  spr-tamago-demo-gateway:
+    extends:
+      file: docker-compose.yml
+      service: spr-tamago-demo-gateway
+    image: ghcr.io/spr-networks/spr-tamago-demo:gateway-latest
+    build: !reset null
+
+networks:
+  tamagonet:
+    name: spr-tamago-demo
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: spr-tamago
+      com.docker.network.bridge.inhibit_ipv4: "true"
+    ipam:
+      config:
+        - subnet: 192.0.2.0/24
+          gateway: 192.0.2.1
