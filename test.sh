@@ -46,16 +46,16 @@ jq -e '
   .kernel_format == 0 and
   .ram_mib == 256
 ' .krun_vm.json >/dev/null
-rg -q 'Direct-booted kernel . no Linux guest' kernel/main.go
-rg -q 'github.com/usbarmory/go-net/virtio' kernel/main.go
-rg -q 'GOOS=tamago GOOSPKG=github.com/usbarmory/tamago GOARCH=arm64' Dockerfile
+grep -Fq 'Direct-booted kernel · no Linux guest' kernel/main.go
+grep -Fq 'github.com/usbarmory/go-net/virtio' kernel/main.go
+grep -Fq 'GOOS=tamago GOOSPKG=github.com/usbarmory/tamago GOARCH=arm64' Dockerfile
 test -f overlays/virtio_arm64.go
 test -f overlays/virtio_arm64_empty.go
 test ! -e kernel/virtionet/net.go
 
 echo "[6/6] Checking CI and reproducibility targets"
-rg -q '^FROM scratch AS reproducibility$' Dockerfile
-rg -q '^  reproducibility:$' .github/workflows/ci.yml
-rg -q 'rewrite-timestamp=true' build_docker_compose.sh reproducibility_test.sh
+grep -Eq '^FROM scratch AS reproducibility$' Dockerfile
+grep -Eq '^  reproducibility:$' .github/workflows/ci.yml
+grep -Fq 'rewrite-timestamp=true' build_docker_compose.sh reproducibility_test.sh
 
 echo "All checks passed."
