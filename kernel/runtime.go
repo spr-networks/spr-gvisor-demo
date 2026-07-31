@@ -3,7 +3,6 @@
 package main
 
 import (
-	"unsafe"
 	_ "unsafe"
 
 	"github.com/usbarmory/tamago/arm64"
@@ -15,11 +14,6 @@ const (
 	ramBytes = 0x0c000000 // 192 MiB managed by the Go runtime
 	dmaBase  = 0x8c000000
 	dmaBytes = 0x02000000 // 32 MiB reserved for virtio queues
-
-	pl011Base = 0x0a000000
-	pl011DR   = 0x000
-	pl011FR   = 0x018
-	pl011TXFF = 1 << 5
 )
 
 var (
@@ -77,20 +71,8 @@ func getRandomData(buf []byte) {
 	}
 }
 
-func read32(addr uintptr) uint32 {
-	return *(*uint32)(unsafe.Pointer(addr))
-}
-
-func write32(addr uintptr, value uint32) {
-	*(*uint32)(unsafe.Pointer(addr)) = value
-}
-
 //go:linkname printk runtime/goos.Printk
-func printk(c byte) {
-	for read32(pl011Base+pl011FR)&pl011TXFF != 0 {
-	}
-	write32(pl011Base+pl011DR, uint32(c))
-}
+func printk(_ byte) {}
 
 func init() {
 	dma.Init(dmaBase, dmaBytes)

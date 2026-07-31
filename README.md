@@ -88,6 +88,12 @@ pinned TamaGo code.
 The kernel's fatal-exit path uses `PSCI_0_2_FN_SYSTEM_OFF` through the HVC
 conduit advertised by libkrun. It no longer uses the incorrect SMC conduit.
 
+This krun configuration does not attach a legacy PL011 serial device. The
+TamaGo `Printk` hook is therefore deliberately silent instead of touching an
+unmapped MMIO address; an empty `docker logs spr-tamago-demo` is expected.
+The plugin's observable interface is its host Unix socket and vsock HTTP
+service.
+
 ## Build
 
 Build or publish the single ARM64 image:

@@ -48,6 +48,8 @@ jq -e '
 grep -Fq 'Direct-booted kernel · no Linux guest' kernel/main.go
 grep -Fq 'virtio-vsock' kernel/main.go
 grep -Fq 'DeviceID = 19' kernel/vsock/protocol.go
+grep -Fq 'func printk(_ byte) {}' kernel/runtime.go
+! grep -Fq 'pl011Base' kernel/runtime.go
 grep -Fq 'krun.vsock_path: "/state/plugins/spr-tamago-demo/socket.sock"' docker-compose-kvm.yml
 grep -Fq 'GOOS=tamago GOOSPKG=github.com/usbarmory/tamago GOARCH=arm64' Dockerfile
 test -f overlays/virtio_arm64.go
