@@ -1,4 +1,4 @@
 .git
 .DS_Store
-tamago-kernel
-tamago-kernel.elf
+gvisor-kernel
+gvisor-kernel.elf

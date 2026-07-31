@@ -1,170 +1,197 @@
-# spr-tamago-demo
+# spr-gvisor-demo
 
-[![Build and verify](https://github.com/spr-networks/spr-tamago-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/spr-networks/spr-tamago-demo/actions/workflows/ci.yml)
+[![Build and verify](https://github.com/spr-networks/spr-gvisor-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/spr-networks/spr-gvisor-demo/actions/workflows/ci.yml)
 
-A Hello World SPR plugin implemented as a single
-[TamaGo](https://github.com/usbarmory/tamago) ARM64 kernel running under krun.
-There is no Linux kernel, init process, guest userspace, or sidecar service.
+A single-service SPR plugin that boots gVisor Sentry directly as the
+application kernel under krun. There is no Linux kernel, Linux init process,
+guest distribution, gateway, or sidecar service.
 
-The kernel itself terminates a VirtIO-vsock stream on port 4040 and serves the
-plugin HTML and `/status` endpoint. SPR and its krun runtime map the plugin's
-host Unix socket to that guest port:
+The demo starts a real gVisor task from an embedded static Linux/AArch64 ELF.
+gVisor loads the ELF, creates its address space and task, resolves page faults,
+and handles the task's `write(2)` and `exit(2)` syscalls. The captured task
+output is displayed by the plugin UI:
 
 ```text
-SPR API -> /state/plugins/spr-tamago-demo/socket.sock
-        -> libkrun VirtIO-vsock port 4040
-        -> TamaGo kernel HTTP handler
+Hello World from gVisor Sentry!
 ```
 
-No guest or container IP address is configured by this plugin. The UI upcall
-does not use TCP, a TAP device, or a Docker bridge.
+## Architecture
+
+```text
+SPR API
+  -> /state/plugins/spr-gvisor-demo/socket.sock
+  -> libkrun VirtIO-vsock port 4040
+  -> one direct-boot ARM64 guest image
+       EL1: TamaGo boot/runtime + gVisor Sentry application kernel
+       EL0: embedded Linux/AArch64 hello task
+```
+
+krun remains the VMM. TamaGo supplies the minimal bare-metal Go runtime,
+early ARM64 setup, and VirtIO MMIO transport needed to enter Go without a
+Linux guest. gVisor Sentry is linked into that image and provides the Linux
+application-kernel semantics. The custom `gvisorplatform` backend replaces
+gVisor's normal host KVM/ptrace entry path with a direct EL1/EL0 context switch
+and gVisor page tables.
+
+This is not gVisor running as Linux userspace and it is not `runsc` inside a
+microVM. The Linux program is an EL0 task of Sentry; no Linux kernel is present.
 
 ## What is in the image
 
 The one `scratch` image contains:
 
-- a raw ARM64 TamaGo kernel at `/tamago-kernel`;
-- the corresponding ELF at `/unused`, retained for inspection; and
-- no Linux filesystem or executable userspace.
+- `/gvisor-kernel`, the raw ARM64 direct-boot image;
+- `/unused`, the corresponding ELF retained for inspection; and
+- `/.krun_vm.json`, an upstream-runtime test hint.
 
-The Docker command is deliberately `/unused`: the trusted SPR krun policy
-selects `/tamago-kernel` as the VM kernel before a container process could run.
-If `/unused` is ever executed and exits with `SIGILL`/`SIGSEGV`, the
-external-kernel policy was not supplied and the image was started as an
-ordinary Linux process.
+The image contains no Linux root filesystem or executable guest userspace.
+The container command is deliberately `/unused`: SPR's trusted krun policy
+selects `/gvisor-kernel` before a container process can execute.
+
+The direct image includes:
+
+- the pinned TamaGo compiler and runtime;
+- the pinned gVisor Sentry source;
+- a bare-metal gVisor memory-file implementation backed by page-aligned Go
+  heap chunks instead of Linux `memfd`/`mmap`;
+- an ARM64 EL1/EL0 platform backend;
+- gVisor tmpfs, ELF loader, task model, FD table, pipe, and Linux syscall table;
+- the ARM64 gVisor VDSO and a direct clock source; and
+- the in-tree VirtIO-vsock HTTP server used by SPR.
 
 ## SPR runtime prerequisite
 
-SPR already supports the standard UI upcall annotations used here:
+The plugin uses the standard SPR UI upcall annotations:
 
 ```yaml
-krun.vsock_path: /state/plugins/spr-tamago-demo/socket.sock
+krun.vsock_path: /state/plugins/spr-gvisor-demo/socket.sock
 krun.vsock_port: "4040"
 ```
 
-Upstream crun/libkrun also support `kernel_path` and raw external kernels, but
-SPR's hardened `spr-krun` runtime correctly ignores image-controlled
-`/.krun_vm.json`. Manager-issued policy must authorize the kernel requested by
-Compose:
+It also asks SPR's trusted krun policy to direct-boot the raw image:
 
 ```yaml
-krun.kernel_path: /tamago-kernel
+krun.kernel_path: /gvisor-kernel
 krun.kernel_format: "0"
 ```
 
 The [`tamago` branch of `spr-networks/super`](https://github.com/spr-networks/super/tree/tamago)
-adds those two trusted policy fields to `superd`. Use that branch and rebuild
-the `superd` service. The runtime then supplies both the external raw kernel
-and SPR-owned listening Unix socket to libkrun.
+adds these external-kernel policy fields to `superd`. Rebuild `superd` from
+that branch. No additional gVisor-specific superd changes are required.
 
-The checked-in `.krun_vm.json` is only an equivalent external-kernel hint for
-testing with an unmodified upstream `krun` runtime. Hardened SPR ignores it.
-
-## TamaGo and VirtIO
-
-The kernel build uses the three settings required by TamaGo:
-
-```text
-GOOS=tamago
-GOARCH=arm64
-GOOSPKG=github.com/usbarmory/tamago
-```
-
-The kernel uses TamaGo's generic VirtIO MMIO transport and split queues to
-drive device ID 19, VirtIO-vsock. Its small in-tree stream implementation
-handles connection setup, credit accounting, request reassembly, response
-framing, and shutdown directly in bare-metal Go.
-
-`usbarmory/go-net/virtio` is a VirtIO network-device driver (device ID 1). It
-was appropriate for an earlier TCP prototype but is intentionally not used by
-this direct vsock architecture.
-
-TamaGo's current `kvm/virtio` directory also contains AMD64 PCI transport
-files without architecture build constraints. The builder makes a temporary
-copy of the pinned TamaGo module and replaces those two PCI files with ARM64
-package stubs. The MMIO and queue implementations remain the upstream pinned
-TamaGo code.
-
-The temporary module copy also marks `0x8c000000..0x8e000000`, the queue-only
-RAM excluded from the Go heap, as ARM64 Normal Memory. TamaGo otherwise maps
-RAM beyond `runtime.MemRegion()` with Device attributes; the bulk memory
-operations used to initialize a VirtIO queue fault on such a mapping.
-
-The kernel's fatal-exit path uses `PSCI_0_2_FN_SYSTEM_OFF` through the HVC
-conduit advertised by libkrun. It no longer uses the incorrect SMC conduit.
-
-This krun configuration does not attach a legacy PL011 serial device. The
-TamaGo `Printk` hook is therefore deliberately silent instead of touching an
-unmapped MMIO address; an empty `docker logs spr-tamago-demo` is expected.
-The plugin's observable interface is its host Unix socket and vsock HTTP
-service.
+Image-controlled `/.krun_vm.json` is intentionally ignored by SPR's hardened
+runtime. It is retained only for equivalent testing with an unmodified
+upstream krun runtime.
 
 ## Build
 
-Build or publish the single ARM64 image:
+The builder requires an ARM64 target and Docker Buildx:
 
 ```sh
 ./build_docker_compose.sh
+```
+
+This builds and loads:
+
+```text
+ghcr.io/spr-networks/spr-gvisor-demo:latest
+```
+
+Publish it with:
+
+```sh
 ./build_docker_compose.sh --push
 ```
 
-The default tag is `ghcr.io/spr-networks/spr-tamago-demo:latest`. The builder
-image, TamaGo module, and TamaGo compiler are pinned. The first build compiles
-the matching TamaGo Go toolchain and can take several minutes.
+The base image, Go version, TamaGo module/compiler commits, gVisor pseudo
+version and commit, and x/sys version are recorded in `reproducible.env`.
+The builder copies the pinned modules to temporary directories and applies
+the checked-in TamaGo/gVisor/x/sys overlays there; downloaded module sources
+are never modified in place.
 
-The complete build environment and two-build digest check are documented in
-[`REPRODUCIBLE_BUILDS.md`](REPRODUCIBLE_BUILDS.md). GitHub Actions verifies
-pull requests and publishes immutable `sha-<commit>` tags plus `latest` from
-`main`.
+GitHub Actions performs source tests, two clean reproducibility builds, and
+publishes commit-addressed and `latest` images from `main`.
 
 ## Run in SPR
 
-Install the standard `spr-krun-runtime`, run `superd` from the SPR `tamago`
-branch above, and install this repository through **Plugins → + New Plugin**.
-The supported launch path is SPR's plugin manager because it signs the trusted
-runtime override and creates the SPR-owned Unix socket mapping.
+Install this repository through **Plugins → + New Plugin**. `plugin.json`
+selects the KVM runtime and adds `spr-gvisor-demo` to the sidebar.
+`docker-compose-kvm.yml` contains exactly one service and does not configure a
+Docker network, TAP device, fixed IP, gateway, or second Linux service.
 
-`plugin.json` selects the KVM runtime and adds **spr-tamago-demo** to the
-sidebar. `docker-compose-kvm.yml` contains exactly one `spr-krun` service and
-declares no plugin network capability or fixed IP.
+Open **spr-gvisor-demo** in the sidebar. The page is served by the direct guest
+over VirtIO-vsock and shows the output captured from the gVisor task.
 
-Open **spr-tamago-demo** in the SPR sidebar. A successful response includes
-`X-TamaGo-Kernel: true`; `/status` reports `"role":"kernel"`,
-`"linux":false`, and `"ipc":"virtio-vsock"`.
+The status endpoint should report:
+
+```json
+{
+  "kernel": "gvisor-sentry",
+  "substrate": "tamago",
+  "linux_kernel": false,
+  "gvisor": "ready",
+  "output": "Hello World from gVisor Sentry!\n",
+  "ipc": "virtio-vsock",
+  "port": 4040
+}
+```
+
+Responses include `X-GVisor-Kernel: true`.
 
 ## Verify
 
-Run the unit, manifest, Compose, source, and reproducible-input checks:
+Run the unit, manifest, Compose, overlay, and reproducible-input checks:
 
 ```sh
 ./test.sh
 ```
 
-To build the kernel without Docker, use the matching TamaGo compiler wrapper:
+Run the two-clean-build comparison with:
 
 ```sh
-BUILD_DIR="$(mktemp -d)"
-TAMAGO_MODULE="$(go list -m -f '{{.Dir}}' github.com/usbarmory/tamago)"
-
-go run ./tools/prepare_tamago.go \
-  -tamago-dir "${TAMAGO_MODULE}" \
-  -out-dir "${BUILD_DIR}/tamago-arm64"
-cp go.mod "${BUILD_DIR}/kernel.mod"
-cp go.sum "${BUILD_DIR}/kernel.sum"
-go mod edit -modfile="${BUILD_DIR}/kernel.mod" \
-  -replace=github.com/usbarmory/tamago="${BUILD_DIR}/tamago-arm64"
-
-GOOS=tamago GOOSPKG=github.com/usbarmory/tamago GOARCH=arm64 \
-  "${TAMAGO}" build -modfile="${BUILD_DIR}/kernel.mod" \
-  -buildvcs=false -trimpath -tags=tamago \
-  -ldflags='-T 0x80010000 -R 0x1000 -s -w -buildid=' \
-  -o "${BUILD_DIR}/tamago-kernel.elf" ./kernel
-
-go run ./tools/elf2raw.go \
-  -in "${BUILD_DIR}/tamago-kernel.elf" \
-  -out tamago-kernel -base 0x80000000
+./reproducibility_test.sh
 ```
 
-The raw image begins with a four-byte AArch64 branch to the TamaGo ELF entry
-point. Loadable segments retain their linked physical addresses, preserving
-TamaGo's early page-table arena below `0x80010000`.
+The direct local build sequence used by the container is:
+
+```sh
+work_dir="$(mktemp -d)"
+tamago_dir="$(go list -m -f '{{.Dir}}' github.com/usbarmory/tamago)"
+gvisor_dir="$(go list -m -f '{{.Dir}}' gvisor.dev/gvisor)"
+xsys_dir="$(go list -m -f '{{.Dir}}' golang.org/x/sys)"
+
+go run ./tools/prepare_tamago.go \
+  -tamago-dir "${tamago_dir}" -out-dir "${work_dir}/tamago"
+go run ./tools/prepare_gvisor.go \
+  -gvisor-dir "${gvisor_dir}" -xsys-dir "${xsys_dir}" \
+  -out-gvisor "${work_dir}/gvisor" -out-xsys "${work_dir}/xsys"
+
+cp go.mod "${work_dir}/kernel.mod"
+cp go.sum "${work_dir}/kernel.sum"
+go mod edit -modfile="${work_dir}/kernel.mod" \
+  -replace=github.com/usbarmory/tamago="${work_dir}/tamago" \
+  -replace=gvisor.dev/gvisor="${work_dir}/gvisor" \
+  -replace=golang.org/x/sys="${work_dir}/xsys"
+
+GOOS=tamago GOOSPKG=github.com/usbarmory/tamago GOARCH=arm64 \
+  "${TAMAGO}" build -modfile="${work_dir}/kernel.mod" \
+  -buildvcs=false -trimpath -tags=tamago \
+  -ldflags='-T 0x80010000 -R 0x1000 -s -w -buildid=' \
+  -o "${work_dir}/gvisor-kernel.elf" ./kernel
+
+go run ./tools/elf2raw.go \
+  -in "${work_dir}/gvisor-kernel.elf" \
+  -out gvisor-kernel -base 0x80000000
+```
+
+`TAMAGO` above is the `go tool -n github.com/usbarmory/tamago/cmd/tamago`
+compiler command produced by the pinned TamaGo Go toolchain.
+
+## Demo scope
+
+This repository proves the direct-boot architecture and the complete SPR UI
+path with a small static task. The compatibility shims intentionally return
+unsupported errors for Linux-host integration features such as donated host
+FDs, host epoll, host networking, and checkpoint host files. Expanding those
+features requires native bare-metal backends; it does not require adding a
+Linux guest or removing krun.

@@ -32,6 +32,9 @@ required=(
     TAMAGO_COMMIT
     TAMAGO_GO_VERSION
     TAMAGO_GO_COMMIT
+    GVISOR_VERSION
+    GVISOR_COMMIT
+    X_SYS_VERSION
     SOURCE_DATE_EPOCH
 )
 for name in "${required[@]}"; do
@@ -54,10 +57,15 @@ tamago_version="$(awk '
   $1 == "github.com/usbarmory/tamago" { print $2; exit }
   $1 == "require" && $2 == "github.com/usbarmory/tamago" { print $3; exit }
 ' go.mod)"
+gvisor_version="$(awk '$1 == "gvisor.dev/gvisor" { print $2; exit }' go.mod)"
+xsys_version="$(awk '$1 == "golang.org/x/sys" { print $2; exit }' go.mod)"
 
 [[ "${go_version}" == "${GO_VERSION}" ]]
 [[ "${tamago_version}" == "${TAMAGO_VERSION}" ]]
+[[ "${gvisor_version}" == "${GVISOR_VERSION}" ]]
+[[ "${xsys_version}" == "${X_SYS_VERSION}" ]]
 [[ "${TAMAGO_VERSION}" == *"-${TAMAGO_COMMIT}" ]]
+[[ "${GVISOR_VERSION}" == *"-${GVISOR_COMMIT:0:12}" ]]
 [[ "${TAMAGO_GO_VERSION}" == "tamago-go${GO_VERSION}" ]]
 [[ "${BUILDX_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
 [[ "${SOURCE_DATE_EPOCH}" == "0" ]]
@@ -66,7 +74,9 @@ grep -Fqx "# syntax=${DOCKERFILE_SYNTAX}" Dockerfile
 grep -Fqx "ARG GO_REF=${GO_REF}" Dockerfile
 grep -Fqx "ARG TAMAGO_GO_VERSION=${TAMAGO_GO_VERSION}" Dockerfile
 grep -Fqx "ARG TAMAGO_GO_COMMIT=${TAMAGO_GO_COMMIT}" Dockerfile
+grep -Fqx "ARG GVISOR_VERSION=${GVISOR_VERSION}" Dockerfile
 grep -Fq "GO_REF: \${GO_REF:-${GO_REF}}" docker-compose.yml
 grep -Fq "TAMAGO_GO_COMMIT: \${TAMAGO_GO_COMMIT:-${TAMAGO_GO_COMMIT}}" docker-compose.yml
+grep -Fq "GVISOR_VERSION: \${GVISOR_VERSION:-${GVISOR_VERSION}}" docker-compose.yml
 
 echo "Reproducible input pins are internally consistent."

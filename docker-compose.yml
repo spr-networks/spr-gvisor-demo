@@ -4,10 +4,10 @@ x-labels:
   org.supernetworks.version: ${RELEASE_VERSION:-latest}${RELEASE_CHANNEL:-}
 
 services:
-  spr-tamago-demo:
-    container_name: spr-tamago-demo
+  spr-gvisor-demo:
+    container_name: spr-gvisor-demo
     platform: linux/arm64
-    image: ghcr.io/spr-networks/spr-tamago-demo:latest
+    image: ghcr.io/spr-networks/spr-gvisor-demo:latest
     # Prefer an image built and loaded on the SPR host. Set PULL_POLICY=always
     # explicitly when a published release should replace the local image.
     pull_policy: ${PULL_POLICY:-missing}
@@ -19,6 +19,7 @@ services:
         SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-0}
         TAMAGO_GO_VERSION: ${TAMAGO_GO_VERSION:-tamago-go1.26.4}
         TAMAGO_GO_COMMIT: ${TAMAGO_GO_COMMIT:-c6c7dc072c5248c9b668d4ad0af1d7653eb3cfa5}
+        GVISOR_VERSION: ${GVISOR_VERSION:-v0.0.0-20260730080753-99012c9af411}
       labels: *default-labels
     restart: unless-stopped
     read_only: true

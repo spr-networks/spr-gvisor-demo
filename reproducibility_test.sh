@@ -16,7 +16,7 @@ set -a
 . ./reproducible.env
 set +a
 
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/spr-tamago-repro.XXXXXX")"
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/spr-gvisor-repro.XXXXXX")"
 created_builder=""
 cleanup() {
     if [[ -n "${created_builder}" ]]; then
@@ -30,7 +30,7 @@ builder=()
 if [[ -n "${BUILDX_BUILDER:-}" ]]; then
     builder=(--builder "${BUILDX_BUILDER}")
 elif [[ "$(docker buildx inspect --format '{{.Driver}}' 2>/dev/null || true)" != "docker-container" ]]; then
-    created_builder="spr-tamago-repro-${RANDOM}-$$"
+    created_builder="spr-gvisor-repro-${RANDOM}-$$"
     docker buildx create \
         --name "${created_builder}" \
         --driver docker-container \
@@ -52,6 +52,7 @@ build_once() {
         --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
         --build-arg "TAMAGO_GO_VERSION=${TAMAGO_GO_VERSION}" \
         --build-arg "TAMAGO_GO_COMMIT=${TAMAGO_GO_COMMIT}" \
+        --build-arg "GVISOR_VERSION=${GVISOR_VERSION}" \
         --provenance=false \
         --sbom=false \
         --output "type=oci,dest=${output},tar=false,rewrite-timestamp=true" \

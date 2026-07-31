@@ -1,17 +1,17 @@
 services:
-  spr-tamago-demo:
+  spr-gvisor-demo:
     extends:
       file: docker-compose.yml
-      service: spr-tamago-demo
-    image: ghcr.io/spr-networks/spr-tamago-demo:latest
+      service: spr-gvisor-demo
+    image: ghcr.io/spr-networks/spr-gvisor-demo:latest
     build: !reset null
     runtime: ${SPR_KRUN_RUNTIME:-spr-krun}
     annotations:
       krun.cpus: "1"
       krun.ram_mib: "256"
-      krun.kernel_path: "/tamago-kernel"
+      krun.kernel_path: "/gvisor-kernel"
       krun.kernel_format: "0"
-      krun.vsock_path: "/state/plugins/spr-tamago-demo/socket.sock"
+      krun.vsock_path: "/state/plugins/spr-gvisor-demo/socket.sock"
       krun.vsock_port: "4040"
     ulimits:
       nofile:

@@ -104,8 +104,8 @@ jobs:
           set -euo pipefail
           short_sha="${GITHUB_SHA:0:12}"
           repository="${REPOSITORY,,}"
-          export SPR_TAMAGO_IMAGE="${repository}:sha-${short_sha}"
+          export SPR_GVISOR_IMAGE="${repository}:sha-${short_sha}"
           ./build_docker_compose.sh --push
           docker buildx imagetools create \
             --tag "${repository}:latest" \
-            "${SPR_TAMAGO_IMAGE}"
+            "${SPR_GVISOR_IMAGE}"

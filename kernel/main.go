@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	guestvsock "github.com/spr-networks/spr-tamago-demo/kernel/vsock"
+	guestvsock "github.com/spr-networks/spr-gvisor-demo/kernel/vsock"
 	"github.com/usbarmory/tamago/kvm/virtio"
 )
 
@@ -28,7 +28,7 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>SPR TamaGo Kernel Demo</title>
+  <title>SPR gVisor Kernel Demo</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
     * { box-sizing: border-box; }
@@ -47,14 +47,15 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 </head>
 <body>
   <main>
-    <div class="eyebrow">Direct-booted kernel · no Linux guest</div>
+    <div class="eyebrow">Direct-booted gVisor · no Linux kernel</div>
     <h1>Hello, SPR.</h1>
-    <div class="hello">Hello World from the TamaGo kernel!</div>
+    <div class="hello">{{.Output}}</div>
     <dl>
-      <dt>Runtime</dt><dd class="ok">{{.GOOS}}/{{.GOARCH}}</dd>
-      <dt>Role</dt><dd>krun guest kernel</dd>
+      <dt>Application kernel</dt><dd class="ok">gVisor Sentry · {{.Stage}}</dd>
+      <dt>Bare-metal substrate</dt><dd>{{.GOOS}}/{{.GOARCH}}</dd>
+      <dt>Role</dt><dd>krun guest kernel · Linux ABI at EL0</dd>
       <dt>SPR IPC</dt><dd>virtio-vsock · port {{.Port}}</dd>
-      <dt>Linux in VM</dt><dd>none</dd>
+      <dt>Linux kernel in VM</dt><dd>none</dd>
     </dl>
   </main>
 </body>
@@ -64,6 +65,8 @@ type pageData struct {
 	GOOS   string
 	GOARCH string
 	Port   uint32
+	Stage  string
+	Output string
 }
 
 func findVsockDevice() (*guestvsock.Device, uint32, error) {
@@ -82,7 +85,7 @@ func findVsockDevice() (*guestvsock.Device, uint32, error) {
 }
 
 func httpResponse(status, contentType string, body []byte) []byte {
-	header := fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\nX-TamaGo-Kernel: true\r\n\r\n", status, contentType, len(body))
+	header := fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\nX-GVisor-Kernel: true\r\n\r\n", status, contentType, len(body))
 	return append([]byte(header), body...)
 }
 
@@ -98,19 +101,26 @@ func handleRequest(request []byte) []byte {
 
 	switch fields[1] {
 	case "/status":
+		stage, failure, output := gvisorStatusSnapshot()
 		body := new(bytes.Buffer)
 		_ = json.NewEncoder(body).Encode(map[string]any{
-			"runtime": runtime.GOOS,
-			"arch":    runtime.GOARCH,
-			"role":    "kernel",
-			"linux":   false,
-			"ipc":     "virtio-vsock",
-			"port":    vsockPort,
+			"runtime":      runtime.GOOS,
+			"arch":         runtime.GOARCH,
+			"role":         "application-kernel",
+			"kernel":       "gvisor-sentry",
+			"substrate":    "tamago",
+			"linux_kernel": false,
+			"gvisor":       stage,
+			"error":        failure,
+			"output":       output,
+			"ipc":          "virtio-vsock",
+			"port":         vsockPort,
 		})
 		return httpResponse("200 OK", "application/json", body.Bytes())
 	case "/":
+		stage, _, output := gvisorStatusSnapshot()
 		body := new(bytes.Buffer)
-		if err := page.Execute(body, pageData{runtime.GOOS, runtime.GOARCH, vsockPort}); err != nil {
+		if err := page.Execute(body, pageData{runtime.GOOS, runtime.GOARCH, vsockPort, stage, output}); err != nil {
 			return httpResponse("500 Internal Server Error", "text/plain; charset=utf-8", []byte("template error\n"))
 		}
 		return httpResponse("200 OK", "text/html; charset=utf-8", body.Bytes())
@@ -121,7 +131,10 @@ func handleRequest(request []byte) []byte {
 
 func main() {
 	log.SetFlags(0)
-	log.Printf("Hello World from the TamaGo kernel! GOOS=%s GOARCH=%s", runtime.GOOS, runtime.GOARCH)
+	if !gvisorKernelProbe() {
+		log.Fatal("gVisor ARM64 ring-0 initialization failed")
+	}
+	log.Printf("gVisor direct-boot platform ready GOOS=%s GOARCH=%s", runtime.GOOS, runtime.GOARCH)
 
 	dev, base, err := findVsockDevice()
 	if err != nil {
@@ -129,6 +142,7 @@ func main() {
 	}
 
 	log.Printf("virtio-vsock MMIO=%#x CID=%d HTTP port=%d", base, dev.CID(), vsockPort)
+	go startGVisorSentry()
 	if err := dev.Serve(vsockPort, handleRequest); err != nil {
 		log.Fatal(err)
 	}

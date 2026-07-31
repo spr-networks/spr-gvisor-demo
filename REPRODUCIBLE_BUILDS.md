@@ -22,6 +22,12 @@ TamaGo compiler wrapper normally shallow-clones a mutable tag; this build
 pre-installs its toolchain from the exact `TAMAGO_GO_COMMIT` instead and checks
 the checkout before compiling the kernel.
 
+gVisor is pinned by both its Go pseudo-version and source commit. The build
+copies the authenticated gVisor, x/sys, and TamaGo modules to temporary
+directories and applies checked-in bare-metal overlays. Patch anchors are
+validated so an upstream source-layout change fails the build instead of
+silently producing a different target.
+
 Builds set `SOURCE_DATE_EPOCH=0`, omit Go build IDs and VCS paths, disable
 BuildKit's time-varying provenance envelope, and ask the OCI exporter to
 rewrite layer timestamps. The delivered programs are static ARM64 binaries;

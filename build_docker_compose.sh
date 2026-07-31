@@ -27,11 +27,12 @@ docker buildx build \
     "${output[@]}" \
     --platform linux/arm64 \
     --target kernel \
-    --tag "${SPR_TAMAGO_IMAGE:-ghcr.io/spr-networks/spr-tamago-demo:latest}" \
+    --tag "${SPR_GVISOR_IMAGE:-ghcr.io/spr-networks/spr-gvisor-demo:latest}" \
     --build-arg "GO_REF=${GO_REF}" \
     --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
     --build-arg "TAMAGO_GO_VERSION=${TAMAGO_GO_VERSION}" \
     --build-arg "TAMAGO_GO_COMMIT=${TAMAGO_GO_COMMIT}" \
+    --build-arg "GVISOR_VERSION=${GVISOR_VERSION}" \
     --provenance=false \
     --sbom=false \
     ${extra[@]+"${extra[@]}"} \

@@ -1,8 +1,8 @@
 {
-  "Name": "spr-tamago-demo",
+  "Name": "spr-gvisor-demo",
   "Runtime": "kvm",
-  "UnixPath": "/state/plugins/spr-tamago-demo/socket.sock",
-  "URI": "spr-tamago-demo",
+  "UnixPath": "/state/plugins/spr-gvisor-demo/socket.sock",
+  "URI": "spr-gvisor-demo",
   "HasUI": true,
   "Icon": "Terminal",
   "SandboxedUI": true,
