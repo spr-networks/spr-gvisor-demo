@@ -55,6 +55,8 @@ grep -Fq 'krun.vsock_path: "/state/plugins/spr-tamago-demo/socket.sock"' docker-
 grep -Fq 'GOOS=tamago GOOSPKG=github.com/usbarmory/tamago GOARCH=arm64' Dockerfile
 test -f overlays/virtio_arm64.go
 test -f overlays/virtio_arm64_empty.go
+grep -Fq 'sprDMAStart uint64 = 0x8c000000' tools/prepare_tamago.go
+grep -Fq 'case addr >= sprDMAStart && addr < sprDMAEnd:' tools/prepare_tamago.go
 test ! -e kernel/virtionet/net.go
 test ! -e gateway.go
 test ! -e gateway_test.go

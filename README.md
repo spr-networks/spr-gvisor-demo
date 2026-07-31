@@ -81,9 +81,14 @@ this direct vsock architecture.
 
 TamaGo's current `kvm/virtio` directory also contains AMD64 PCI transport
 files without architecture build constraints. The builder makes a temporary
-copy of the pinned TamaGo module and replaces only those two PCI files with
-ARM64 package stubs. The MMIO and queue implementations remain the upstream
-pinned TamaGo code.
+copy of the pinned TamaGo module and replaces those two PCI files with ARM64
+package stubs. The MMIO and queue implementations remain the upstream pinned
+TamaGo code.
+
+The temporary module copy also marks `0x8c000000..0x8e000000`, the queue-only
+RAM excluded from the Go heap, as ARM64 Normal Memory. TamaGo otherwise maps
+RAM beyond `runtime.MemRegion()` with Device attributes; the bulk memory
+operations used to initialize a VirtIO queue fault on such a mapping.
 
 The kernel's fatal-exit path uses `PSCI_0_2_FN_SYSTEM_OFF` through the HVC
 conduit advertised by libkrun. It no longer uses the incorrect SMC conduit.

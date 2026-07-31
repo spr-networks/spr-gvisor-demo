@@ -1,8 +1,8 @@
 //go:build ignore
 
 // Command prepare_tamago makes a temporary, ARM64-buildable copy of the
-// pinned TamaGo module. It replaces only the two AMD64 PCI transport files
-// which currently lack upstream architecture build constraints.
+// pinned TamaGo module. It replaces AMD64 PCI transport files which currently
+// lack upstream architecture build constraints and applies the krun DMA map.
 package main
 
 import (
@@ -12,6 +12,26 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+)
+
+const (
+	mmuConstantsAnchor = `	l3pageTableOffset = 0x7000
+	l3pageTableSize   = 512
+)`
+	mmuConstantsWithDMA = mmuConstantsAnchor + `
+
+// sprDMAStart..sprDMAEnd is RAM reserved from the Go heap for VirtIO queues.
+// It must retain Normal Memory attributes even though it lies outside the
+// runtime region; bulk queue initialization faults on Device memory mappings.
+const (
+	sprDMAStart uint64 = 0x8c000000
+	sprDMAEnd   uint64 = 0x8e000000
+)`
+	mmuDeviceDefault     = `		default:`
+	mmuDMAClassification = `		case addr >= sprDMAStart && addr < sprDMAEnd:
+			reg.Write64(page, addr|memoryRegion|TTE_EXECUTE_NEVER)
+		default:`
 )
 
 func main() {
@@ -66,6 +86,27 @@ func main() {
 			panic(err)
 		}
 	}
+
+	if err := patchARM64MMU(filepath.Join(*outDir, "arm64", "mmu.go")); err != nil {
+		panic(err)
+	}
+}
+
+func patchARM64MMU(path string) error {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	text := string(source)
+	if strings.Count(text, mmuConstantsAnchor) != 1 {
+		return fmt.Errorf("unexpected TamaGo arm64/mmu.go constants")
+	}
+	text = strings.Replace(text, mmuConstantsAnchor, mmuConstantsWithDMA, 1)
+	if strings.Count(text, mmuDeviceDefault) != 3 {
+		return fmt.Errorf("unexpected TamaGo arm64/mmu.go classification logic")
+	}
+	text = strings.ReplaceAll(text, mmuDeviceDefault, mmuDMAClassification)
+	return os.WriteFile(path, []byte(text), 0o644)
 }
 
 func copyFile(src, dst string) error {

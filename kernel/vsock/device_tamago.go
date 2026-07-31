@@ -116,6 +116,7 @@ func (d *Device) Serve(port uint32, handler func([]byte) []byte) error {
 
 	for {
 		progress := false
+		rxReplenished := false
 		for {
 			n, err := d.rx.Pop(rxBuffer)
 			if err != nil {
@@ -125,16 +126,18 @@ func (d *Device) Serve(port uint32, handler func([]byte) []byte) error {
 				break
 			}
 			progress = true
+			rxReplenished = true
 			packets, err := endpoint.Handle(rxBuffer[:n])
 			if err != nil {
 				return err
 			}
 			pending = append(pending, packets...)
 		}
-		if d.rx.NeedsNotify() {
+		if rxReplenished {
 			d.Transport.QueueNotify(ReceiveQueue)
 		}
 
+		eventReplenished := false
 		for {
 			n, err := d.event.Pop(eventBuffer)
 			if err != nil {
@@ -144,11 +147,12 @@ func (d *Device) Serve(port uint32, handler func([]byte) []byte) error {
 				break
 			}
 			progress = true
+			eventReplenished = true
 			if n >= 4 && binary.LittleEndian.Uint32(eventBuffer[:4]) == 0 {
 				endpoint.Reset()
 			}
 		}
-		if d.event.NeedsNotify() {
+		if eventReplenished {
 			d.Transport.QueueNotify(EventQueue)
 		}
 
