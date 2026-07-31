@@ -34,7 +34,7 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; color: #eef7f2;
       background: radial-gradient(circle at 20% 15%, #164d45 0, transparent 32%), #071714; }
-    main { width: min(760px, calc(100% - 32px)); padding: 40px; border: 1px solid #2d6358;
+    main { width: min(860px, calc(100% - 32px)); padding: 40px; border: 1px solid #2d6358;
       border-radius: 20px; background: rgba(9, 31, 27, .94); box-shadow: 0 24px 80px #0008; }
     .eyebrow { color: #79e2bd; font-size: .8rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
     h1 { margin: 12px 0 24px; font-size: clamp(2rem, 6vw, 4rem); line-height: 1; }
@@ -55,6 +55,14 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
       <dt>Bare-metal substrate</dt><dd>{{.GOOS}}/{{.GOARCH}}</dd>
       <dt>Role</dt><dd>krun guest kernel · Linux ABI at EL0</dd>
       <dt>SPR IPC</dt><dd>virtio-vsock · port {{.Port}}</dd>
+      <dt>Network owner</dt><dd>gVisor Sentry netstack</dd>
+      <dt>Network</dt><dd class="ok">{{.NetworkPhase}}</dd>
+      <dt>Interface</dt><dd>virtio-net · {{.MAC}}</dd>
+      <dt>DHCP address</dt><dd>{{.Address}}</dd>
+      <dt>Gateway</dt><dd>{{.Gateway}}</dd>
+      <dt>DNS</dt><dd>{{.DNS}}</dd>
+      <dt>Internet probe</dt><dd>{{.Probe}}</dd>
+      {{if .NetworkError}}<dt>Network detail</dt><dd>{{.NetworkError}}</dd>{{end}}
       <dt>Linux kernel in VM</dt><dd>none</dd>
     </dl>
   </main>
@@ -62,11 +70,18 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 </html>`))
 
 type pageData struct {
-	GOOS   string
-	GOARCH string
-	Port   uint32
-	Stage  string
-	Output string
+	GOOS         string
+	GOARCH       string
+	Port         uint32
+	Stage        string
+	Output       string
+	NetworkPhase string
+	MAC          string
+	Address      string
+	Gateway      string
+	DNS          string
+	Probe        string
+	NetworkError string
 }
 
 func findVsockDevice() (*guestvsock.Device, uint32, error) {
@@ -102,6 +117,7 @@ func handleRequest(request []byte) []byte {
 	switch fields[1] {
 	case "/status":
 		stage, failure, output := gvisorStatusSnapshot()
+		network := networkStatusSnapshot()
 		body := new(bytes.Buffer)
 		_ = json.NewEncoder(body).Encode(map[string]any{
 			"runtime":      runtime.GOOS,
@@ -115,12 +131,19 @@ func handleRequest(request []byte) []byte {
 			"output":       output,
 			"ipc":          "virtio-vsock",
 			"port":         vsockPort,
+			"network":      network,
 		})
 		return httpResponse("200 OK", "application/json", body.Bytes())
 	case "/":
 		stage, _, output := gvisorStatusSnapshot()
+		network := networkStatusSnapshot()
 		body := new(bytes.Buffer)
-		if err := page.Execute(body, pageData{runtime.GOOS, runtime.GOARCH, vsockPort, stage, output}); err != nil {
+		if err := page.Execute(body, pageData{
+			GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Port: vsockPort,
+			Stage: stage, Output: output, NetworkPhase: network.Phase, MAC: network.MAC,
+			Address: network.Address, Gateway: network.Gateway, DNS: dnsText(network.DNS),
+			Probe: network.Probe, NetworkError: network.Error,
+		}); err != nil {
 			return httpResponse("500 Internal Server Error", "text/plain; charset=utf-8", []byte("template error\n"))
 		}
 		return httpResponse("200 OK", "text/html; charset=utf-8", body.Bytes())

@@ -15,6 +15,9 @@ output is displayed by the plugin UI:
 Hello World from gVisor Sentry!
 ```
 
+The same kernel now owns a VirtIO-net device, acquires its configuration from
+SPR DHCP, and exposes an outbound Internet probe in the UI and `/status`.
+
 ## Architecture
 
 ```text
@@ -24,6 +27,10 @@ SPR API
   -> one direct-boot ARM64 guest image
        EL1: TamaGo boot/runtime + gVisor Sentry application kernel
        EL0: embedded Linux/AArch64 hello task
+
+Internet
+  <- SPR WAN/DNS policy <- SPR plugin bridge <- krun TAP/VirtIO-net
+  <- gVisor Sentry netstack in the same direct-boot guest
 ```
 
 krun remains the VMM. TamaGo supplies the minimal bare-metal Go runtime,
@@ -35,6 +42,8 @@ and gVisor page tables.
 
 This is not gVisor running as Linux userspace and it is not `runsc` inside a
 microVM. The Linux program is an EL0 task of Sentry; no Linux kernel is present.
+TamaGo drives the VirtIO queues, while Sentry owns the single gVisor
+`tcpip.Stack` used by both Linux tasks and the supervisor's connectivity probe.
 
 ## What is in the image
 
@@ -55,6 +64,8 @@ The direct image includes:
 - a bare-metal gVisor memory-file implementation backed by page-aligned Go
   heap chunks instead of Linux `memfd`/`mmap`;
 - an ARM64 EL1/EL0 platform backend;
+- the pinned `usbarmory/go-net/virtio` driver and raw-Ethernet DHCP client;
+- a single Sentry-owned netstack connected directly to VirtIO-net;
 - gVisor tmpfs, ELF loader, task model, FD table, pipe, and Linux syscall table;
 - the ARM64 gVisor VDSO and a direct clock source; and
 - the in-tree VirtIO-vsock HTTP server used by SPR.
@@ -74,6 +85,17 @@ It also asks SPR's trusted krun policy to direct-boot the raw image:
 krun.kernel_path: /gvisor-kernel
 krun.kernel_format: "0"
 ```
+
+Networking uses the standard SPR KVM plugin path:
+
+```yaml
+krun.tap_name: kruntap0
+krun.net_uplink: eth0
+```
+
+`plugin.json` declares the `spr-gvisor-demo` bridge interface, a stable locally
+administered MAC, and `wan` plus `dns` policies. The guest does not hard-code an
+address, gateway, or DNS server; it receives all three from SPR DHCP.
 
 The [`tamago` branch of `spr-networks/super`](https://github.com/spr-networks/super/tree/tamago)
 adds these external-kernel policy fields to `superd`. Rebuild `superd` from
@@ -103,8 +125,9 @@ Publish it with:
 ./build_docker_compose.sh --push
 ```
 
-The base image, Go version, TamaGo module/compiler commits, gVisor pseudo
-version and commit, and x/sys version are recorded in `reproducible.env`.
+The base image, Go version, TamaGo module/compiler commits, go-net
+version/commit, gVisor pseudo-version/commit, and x/sys version are recorded in
+`reproducible.env`.
 The builder copies the pinned modules to temporary directories and applies
 the checked-in TamaGo/gVisor/x/sys overlays there; downloaded module sources
 are never modified in place.
@@ -116,8 +139,9 @@ publishes commit-addressed and `latest` images from `main`.
 
 Install this repository through **Plugins → + New Plugin**. `plugin.json`
 selects the KVM runtime and adds `spr-gvisor-demo` to the sidebar.
-`docker-compose-kvm.yml` contains exactly one service and does not configure a
-Docker network, TAP device, fixed IP, gateway, or second Linux service.
+`docker-compose-kvm.yml` contains exactly one service and one TAP-backed plugin
+network. It does not configure a fixed IP, fixed gateway, or second Linux
+service.
 
 Open **spr-gvisor-demo** in the sidebar. The page is served by the direct guest
 over VirtIO-vsock and shows the output captured from the gVisor task.
@@ -132,11 +156,20 @@ The status endpoint should report:
   "gvisor": "ready",
   "output": "Hello World from gVisor Sentry!\n",
   "ipc": "virtio-vsock",
-  "port": 4040
+  "port": 4040,
+  "network": {
+    "owner": "gVisor Sentry netstack",
+    "phase": "online",
+    "probe": "Sentry netstack DNS + TCP example.com:80 succeeded"
+  }
 }
 ```
 
 Responses include `X-GVisor-Kernel: true`.
+
+The exact image also boots and serves its UI under macOS/HVF. A complete
+network test must run on Linux SPR because the SPR bridge, DHCP service, and
+TAP policy are host facilities.
 
 ## Verify
 
@@ -189,9 +222,9 @@ compiler command produced by the pinned TamaGo Go toolchain.
 
 ## Demo scope
 
-This repository proves the direct-boot architecture and the complete SPR UI
-path with a small static task. The compatibility shims intentionally return
-unsupported errors for Linux-host integration features such as donated host
-FDs, host epoll, host networking, and checkpoint host files. Expanding those
-features requires native bare-metal backends; it does not require adding a
-Linux guest or removing krun.
+This repository proves the direct-boot architecture, complete SPR UI path,
+native VirtIO networking, DHCP configuration, and a small static Sentry task.
+The compatibility shims still return unsupported errors for unrelated
+Linux-host integrations such as donated host FDs, host epoll, and checkpoint
+host files. Expanding those features requires native bare-metal backends; it
+does not require adding a Linux guest or removing krun.

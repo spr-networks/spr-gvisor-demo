@@ -6,5 +6,10 @@
   "HasUI": true,
   "Icon": "Terminal",
   "SandboxedUI": true,
+  "NetworkCapabilities": {
+    "Interface": "spr-gvisor-demo",
+    "DeviceMAC": "02:53:50:52:47:01",
+    "Policies": ["wan", "dns"]
+  },
   "Enabled": true
 }

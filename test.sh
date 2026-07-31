@@ -11,7 +11,9 @@ jq -e '
   .HasUI == true and
   .SandboxedUI == true and
   .Enabled == true and
-  (has("NetworkCapabilities") | not)
+  .NetworkCapabilities.Interface == "spr-gvisor-demo" and
+  .NetworkCapabilities.DeviceMAC == "02:53:50:52:47:01" and
+  .NetworkCapabilities.Policies == ["wan", "dns"]
 ' plugin.json >/dev/null
 
 echo "[2/6] Validating reproducible inputs and shell scripts"
@@ -35,9 +37,12 @@ jq -e '
   .services["spr-gvisor-demo"].annotations["krun.kernel_format"] == "0" and
   .services["spr-gvisor-demo"].annotations["krun.vsock_path"] == "/state/plugins/spr-gvisor-demo/socket.sock" and
   .services["spr-gvisor-demo"].annotations["krun.vsock_port"] == "4040" and
-  (.services["spr-gvisor-demo"].annotations | has("krun.tap_name") | not) and
-  (.services["spr-gvisor-demo"].annotations | has("krun.net_uplink") | not) and
-  (.services["spr-gvisor-demo"] | has("devices") | not)
+  .services["spr-gvisor-demo"].annotations["krun.tap_name"] == "kruntap0" and
+  .services["spr-gvisor-demo"].annotations["krun.net_uplink"] == "eth0" and
+  (.services["spr-gvisor-demo"].devices | any(.source == "/dev/net/tun" and .target == "/dev/net/tun")) and
+  .networks.gvisornet.name == "spr-gvisor-demo" and
+  .networks.gvisornet.driver_opts["com.docker.network.bridge.name"] == "spr-gvisor-demo" and
+  .networks.gvisornet.driver_opts["com.docker.network.bridge.inhibit_ipv4"] == "true"
 ' <<<"${compose_json}" >/dev/null
 
 echo "[5/6] Checking direct-kernel inputs"
@@ -50,6 +55,7 @@ grep -Fq 'Direct-booted gVisor · no Linux kernel' kernel/main.go
 grep -Fq 'Hello World from gVisor Sentry!' kernel/gvisor_sentry.go
 grep -Fq 'X-GVisor-Kernel: true' kernel/main.go
 grep -Fq 'virtio-vsock' kernel/main.go
+grep -Fq 'RootNetworkNamespace: rootNetworkNS' kernel/gvisor_sentry.go
 grep -Fq 'DeviceID = 19' kernel/vsock/protocol.go
 grep -Fq 'func printk(_ byte) {}' kernel/runtime.go
 ! grep -Fq 'pl011Base' kernel/runtime.go
@@ -66,7 +72,14 @@ test -f kernel/gvisorplatform/platform.go
 test -f kernel/gvisorplatform/registers_arm64.s
 grep -Fq 'sprDMAStart uint64 = 0x8c000000' tools/prepare_tamago.go
 grep -Fq 'case addr >= sprDMAStart && addr < sprDMAEnd:' tools/prepare_tamago.go
-test ! -e kernel/virtionet/net.go
+test -f kernel/sprnet/dhcp.go
+test -f kernel/sprnet/virtio_tamago.go
+grep -Fq 'github.com/usbarmory/go-net/virtio' kernel/sprnet/virtio_tamago.go
+grep -Fq 'DHCPDISCOVER and DHCPREQUEST' kernel/sprnet/dhcp.go
+grep -Fq 'newSentryNetworkNamespace' kernel/network_tamago.go
+grep -Fq 'Sentry netstack DNS + TCP example.com:80 succeeded' kernel/network_tamago.go
+grep -Fq 'krun.tap_name: "kruntap0"' docker-compose-kvm.yml
+grep -Fq 'krun.net_uplink: "eth0"' docker-compose-kvm.yml
 test ! -e gateway.go
 test ! -e gateway_test.go
 ! grep -REq 'tamago-kernel|SPR_TAMAGO_IMAGE' \

@@ -69,21 +69,24 @@ func runSentryHello() (string, error) {
 
 	userNS := auth.NewRootUserNamespace()
 	creds := auth.NewRootCredentials(userNS)
+	rootNetworkNS := newSentryNetworkNamespace(userNS)
 	setGVisorStage("kernel-init")
 	if err := gvisorSentry.Init(sentrykernel.InitKernelArgs{
-		FeatureSet:        cpuid.HostFeatureSet().Fixed(),
-		Timekeeper:        tk,
-		RootUserNamespace: userNS,
-		ApplicationCores:  1,
-		Vdso:              vdso,
-		VdsoParams:        params,
-		RootUTSNamespace:  sentrykernel.NewUTSNamespace("spr-gvisor-demo", "", userNS),
-		RootIPCNamespace:  sentrykernel.NewIPCNamespace(userNS),
-		RootPIDNamespace:  sentrykernel.NewRootPIDNamespace(userNS),
-		Cgroup2FSInit:     cgroup2fs.NewFilesystem,
+		FeatureSet:           cpuid.HostFeatureSet().Fixed(),
+		Timekeeper:           tk,
+		RootUserNamespace:    userNS,
+		RootNetworkNamespace: rootNetworkNS,
+		ApplicationCores:     1,
+		Vdso:                 vdso,
+		VdsoParams:           params,
+		RootUTSNamespace:     sentrykernel.NewUTSNamespace("spr-gvisor-demo", "", userNS),
+		RootIPCNamespace:     sentrykernel.NewIPCNamespace(userNS),
+		RootPIDNamespace:     sentrykernel.NewRootPIDNamespace(userNS),
+		Cgroup2FSInit:        cgroup2fs.NewFilesystem,
 	}); err != nil {
 		return "", fmt.Errorf("initialize Sentry kernel: %w", err)
 	}
+	go startInternetNetworking()
 
 	ctx := gvisorSentry.SupervisorContext()
 	setGVisorStage("rootfs")
