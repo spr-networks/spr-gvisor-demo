@@ -104,12 +104,8 @@ jobs:
           set -euo pipefail
           short_sha="${GITHUB_SHA:0:12}"
           repository="${REPOSITORY,,}"
-          export SPR_TAMAGO_KERNEL_IMAGE="${repository}:kernel-sha-${short_sha}"
-          export SPR_TAMAGO_GATEWAY_IMAGE="${repository}:gateway-sha-${short_sha}"
+          export SPR_TAMAGO_IMAGE="${repository}:sha-${short_sha}"
           ./build_docker_compose.sh --push
           docker buildx imagetools create \
-            --tag "${repository}:kernel-latest" \
-            "${SPR_TAMAGO_KERNEL_IMAGE}"
-          docker buildx imagetools create \
-            --tag "${repository}:gateway-latest" \
-            "${SPR_TAMAGO_GATEWAY_IMAGE}"
+            --tag "${repository}:latest" \
+            "${SPR_TAMAGO_IMAGE}"

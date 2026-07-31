@@ -3,23 +3,20 @@
 package main
 
 import (
-	"context"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
-	"net/http"
 	"runtime"
+	"strings"
 
-	gnet "github.com/usbarmory/go-net"
-	vnet "github.com/usbarmory/go-net/virtio"
+	guestvsock "github.com/spr-networks/spr-tamago-demo/kernel/vsock"
 	"github.com/usbarmory/tamago/kvm/virtio"
 )
 
 const (
-	guestCIDR = "192.0.2.2/24"
-	guestMAC  = "02:53:50:52:54:47"
-	httpPort  = 8080
+	vsockPort = 4040
 
 	virtioMMIOStart = 0x0a002000
 	virtioMMIOEnd   = 0x0a020000
@@ -56,7 +53,7 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
     <dl>
       <dt>Runtime</dt><dd class="ok">{{.GOOS}}/{{.GOARCH}}</dd>
       <dt>Role</dt><dd>krun guest kernel</dd>
-      <dt>Network</dt><dd>virtio-net · {{.Address}}</dd>
+      <dt>SPR IPC</dt><dd>virtio-vsock · port {{.Port}}</dd>
       <dt>Linux in VM</dt><dd>none</dd>
     </dl>
   </main>
@@ -64,84 +61,75 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 </html>`))
 
 type pageData struct {
-	GOOS    string
-	GOARCH  string
-	Address string
+	GOOS   string
+	GOARCH string
+	Port   uint32
 }
 
-func findNetworkDevice() (*vnet.Net, uint32, error) {
+func findVsockDevice() (*guestvsock.Device, uint32, error) {
 	for base := uint32(virtioMMIOStart); base < virtioMMIOEnd; base += virtioMMIOStep {
 		transport := &virtio.MMIO{Base: base}
-		if transport.DeviceID() != vnet.DeviceID {
+		if transport.DeviceID() != guestvsock.DeviceID {
 			continue
 		}
-		dev := &vnet.Net{
-			Transport: transport,
-			MTU:       gnet.MTU,
-		}
+		dev := &guestvsock.Device{Transport: transport}
 		if err := dev.Init(); err != nil {
 			return nil, base, err
 		}
 		return dev, base, nil
 	}
-	return nil, 0, fmt.Errorf("virtio-net device not found")
+	return nil, 0, fmt.Errorf("virtio-vsock device not found")
 }
 
-func handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/status", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("X-TamaGo-Kernel", "true")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+func httpResponse(status, contentType string, body []byte) []byte {
+	header := fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\nX-TamaGo-Kernel: true\r\n\r\n", status, contentType, len(body))
+	return append([]byte(header), body...)
+}
+
+func handleRequest(request []byte) []byte {
+	lineEnd := bytes.Index(request, []byte("\r\n"))
+	if lineEnd < 0 {
+		return httpResponse("400 Bad Request", "text/plain; charset=utf-8", []byte("bad request\n"))
+	}
+	fields := strings.Fields(string(request[:lineEnd]))
+	if len(fields) != 3 || fields[0] != "GET" {
+		return httpResponse("405 Method Not Allowed", "text/plain; charset=utf-8", []byte("method not allowed\n"))
+	}
+
+	switch fields[1] {
+	case "/status":
+		body := new(bytes.Buffer)
+		_ = json.NewEncoder(body).Encode(map[string]any{
 			"runtime": runtime.GOOS,
 			"arch":    runtime.GOARCH,
 			"role":    "kernel",
 			"linux":   false,
+			"ipc":     "virtio-vsock",
+			"port":    vsockPort,
 		})
-	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
+		return httpResponse("200 OK", "application/json", body.Bytes())
+	case "/":
+		body := new(bytes.Buffer)
+		if err := page.Execute(body, pageData{runtime.GOOS, runtime.GOARCH, vsockPort}); err != nil {
+			return httpResponse("500 Internal Server Error", "text/plain; charset=utf-8", []byte("template error\n"))
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("X-TamaGo-Kernel", "true")
-		_ = page.Execute(w, pageData{runtime.GOOS, runtime.GOARCH, guestCIDR})
-	})
-	return mux
+		return httpResponse("200 OK", "text/html; charset=utf-8", body.Bytes())
+	default:
+		return httpResponse("404 Not Found", "text/plain; charset=utf-8", []byte("not found\n"))
+	}
 }
 
 func main() {
 	log.SetFlags(0)
 	log.Printf("Hello World from the TamaGo kernel! GOOS=%s GOARCH=%s", runtime.GOOS, runtime.GOARCH)
 
-	dev, base, err := findNetworkDevice()
+	dev, base, err := findVsockDevice()
 	if err != nil {
 		log.Fatal(err)
 	}
-	stack := gnet.NewGVisorStack(1)
-	iface := &gnet.Interface{NetworkDevice: dev, Stack: stack}
-	if err := iface.Init(guestCIDR, guestMAC, ""); err != nil {
-		log.Fatalf("configure network: %v", err)
-	}
-	if err := stack.EnableICMP(); err != nil {
-		log.Fatalf("enable ICMP: %v", err)
-	}
-	listener, err := stack.ListenerTCP4(httpPort)
-	if err != nil {
-		log.Fatalf("listen: %v", err)
-	}
 
-	dev.Start()
-	go func() {
-		if err := iface.Start(context.Background()); err != nil {
-			log.Printf("network loop stopped: %v", err)
-		}
-	}()
-
-	log.Printf("virtio-net MMIO=%#x MAC=%s HTTP=%s:%d", base, guestMAC, guestCIDR, httpPort)
-	server := &http.Server{Handler: handler()}
-	if err := server.Serve(listener); err != nil {
+	log.Printf("virtio-vsock MMIO=%#x CID=%d HTTP port=%d", base, dev.CID(), vsockPort)
+	if err := dev.Serve(vsockPort, handleRequest); err != nil {
 		log.Fatal(err)
 	}
 }

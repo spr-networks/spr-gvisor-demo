@@ -60,7 +60,7 @@ diff --git a/superd/code/krun_policy.go b/superd/code/krun_policy.go
 diff --git a/superd/code/krun_policy_test.go b/superd/code/krun_policy_test.go
 --- a/superd/code/krun_policy_test.go
 +++ b/superd/code/krun_policy_test.go
-@@ -74,6 +74,48 @@ func TestBuildKrunTrustedPolicyReplacesPrivilegedValues(t *testing.T) {
+@@ -74,6 +74,53 @@ func TestBuildKrunTrustedPolicyReplacesPrivilegedValues(t *testing.T) {
  	}
  }
  
@@ -68,6 +68,8 @@ diff --git a/superd/code/krun_policy_test.go b/superd/code/krun_policy_test.go
 +	annotations := map[string]string{
 +		"krun.kernel_path":   "/tamago-kernel",
 +		"krun.kernel_format": "0",
++		"krun.vsock_path":    "/state/plugins/spr-tamago-demo/socket.sock",
++		"krun.vsock_port":    "4040",
 +	}
 +	policy, err := buildKrunTrustedPolicy("plugin-a", "service-a", annotations, "")
 +	if err != nil {
@@ -75,6 +77,9 @@ diff --git a/superd/code/krun_policy_test.go b/superd/code/krun_policy_test.go
 +	}
 +	if policy.KernelPath != "/tamago-kernel" || policy.KernelFormat == nil || *policy.KernelFormat != 0 {
 +		t.Fatalf("unexpected external kernel policy: %#v", policy)
++	}
++	if policy.VsockPath != "/run/spr-krun/listen/socket.sock" || policy.VsockPort != 4040 {
++		t.Fatalf("external kernel lost its SPR upcall mapping: %#v", policy)
 +	}
 +}
 +

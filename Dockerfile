@@ -13,7 +13,6 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
-COPY gateway.go gateway_test.go ./
 COPY kernel/ ./kernel/
 COPY overlays/ ./overlays/
 COPY tools/ ./tools/
@@ -44,8 +43,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     set -eux; \
     test "${TARGETARCH}" = arm64; \
     go test ./...; \
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-      go build -buildvcs=false -trimpath -ldflags="-s -w -buildid=" -o /spr-tamago-gateway .; \
     TAMAGO_DIR="$(go list -m -f '{{.Dir}}' github.com/usbarmory/tamago)"; \
     go run ./tools/prepare_tamago.go \
       -tamago-dir "${TAMAGO_DIR}" \
@@ -70,7 +67,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       -base 0x80000000
 
 FROM scratch AS reproducibility
-COPY --from=builder /tamago-kernel /tamago-kernel.elf /spr-tamago-gateway /artifacts/
+COPY --from=builder /tamago-kernel /tamago-kernel.elf /artifacts/
 COPY .krun_vm.json /artifacts/.krun_vm.json
 
 FROM scratch AS kernel
@@ -79,8 +76,3 @@ COPY --from=builder /tamago-kernel /tamago-kernel
 COPY --from=builder /tamago-kernel.elf /unused
 COPY .krun_vm.json /.krun_vm.json
 CMD ["/unused"]
-
-FROM scratch AS gateway
-LABEL org.opencontainers.image.source="https://github.com/spr-networks/spr-tamago-demo"
-COPY --from=builder /spr-tamago-gateway /spr-tamago-gateway
-CMD ["/spr-tamago-gateway"]

@@ -1,6 +1,6 @@
 # Reproducible builds
 
-The kernel and gateway are built from content-addressed container inputs and
+The kernel is built from content-addressed container inputs and
 checksum-verified Go modules. The canonical pins live in
 [`reproducible.env`](reproducible.env), and
 [`verify_reproducible.sh`](verify_reproducible.sh) rejects drift between that
@@ -17,7 +17,7 @@ file, `go.mod`, the Dockerfile, and Compose.
   module proxy for the first cold build
 
 The Dockerfile pins the Go builder image by digest. `go.mod` and `go.sum` pin
-and authenticate TamaGo, go-net, gVisor, and all transitive Go modules. The
+and authenticate TamaGo and all transitive Go modules. The
 TamaGo compiler wrapper normally shallow-clones a mutable tag; this build
 pre-installs its toolchain from the exact `TAMAGO_GO_COMMIT` instead and checks
 the checkout before compiling the kernel.
@@ -55,6 +55,5 @@ To create locally loaded release images:
 ```
 
 The `main` GitHub Actions workflow performs the same checks and publishes
-immutable `kernel-sha-<commit>` and `gateway-sha-<commit>` tags to GHCR. The
-`kernel-latest` and `gateway-latest` tags are aliases of those immutable
-manifests.
+an immutable `sha-<commit>` tag to GHCR. The `latest` tag is an alias of that
+immutable manifest.

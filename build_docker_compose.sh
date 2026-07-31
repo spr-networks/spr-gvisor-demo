@@ -27,21 +27,7 @@ docker buildx build \
     "${output[@]}" \
     --platform linux/arm64 \
     --target kernel \
-    --tag "${SPR_TAMAGO_KERNEL_IMAGE:-ghcr.io/spr-networks/spr-tamago-demo:kernel-latest}" \
-    --build-arg "GO_REF=${GO_REF}" \
-    --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
-    --build-arg "TAMAGO_GO_VERSION=${TAMAGO_GO_VERSION}" \
-    --build-arg "TAMAGO_GO_COMMIT=${TAMAGO_GO_COMMIT}" \
-    --provenance=false \
-    --sbom=false \
-    ${extra[@]+"${extra[@]}"} \
-    .
-
-docker buildx build \
-    "${output[@]}" \
-    --platform linux/arm64 \
-    --target gateway \
-    --tag "${SPR_TAMAGO_GATEWAY_IMAGE:-ghcr.io/spr-networks/spr-tamago-demo:gateway-latest}" \
+    --tag "${SPR_TAMAGO_IMAGE:-ghcr.io/spr-networks/spr-tamago-demo:latest}" \
     --build-arg "GO_REF=${GO_REF}" \
     --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
     --build-arg "TAMAGO_GO_VERSION=${TAMAGO_GO_VERSION}" \

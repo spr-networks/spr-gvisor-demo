@@ -4,10 +4,10 @@ x-labels:
   org.supernetworks.version: ${RELEASE_VERSION:-latest}${RELEASE_CHANNEL:-}
 
 services:
-  spr-tamago-demo-kernel:
-    container_name: spr-tamago-demo-kernel
+  spr-tamago-demo:
+    container_name: spr-tamago-demo
     platform: linux/arm64
-    image: ghcr.io/spr-networks/spr-tamago-demo:kernel-latest
+    image: ghcr.io/spr-networks/spr-tamago-demo:latest
     build:
       context: "${BUILDCTX:-.}"
       target: kernel
@@ -23,45 +23,3 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    networks:
-      tamagonet:
-        ipv4_address: 192.0.2.4
-
-  spr-tamago-demo-gateway:
-    container_name: spr-tamago-demo-gateway
-    platform: linux/arm64
-    image: ghcr.io/spr-networks/spr-tamago-demo:gateway-latest
-    build:
-      context: "${BUILDCTX:-.}"
-      target: gateway
-      args:
-        GO_REF: ${GO_REF:-docker.io/library/golang:1.26.4-bookworm@sha256:b305420a68d0f229d91eb3b3ed9e519fcf2cf5461da4bef997bf927e8c0bfd2b}
-        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-0}
-        TAMAGO_GO_VERSION: ${TAMAGO_GO_VERSION:-tamago-go1.26.4}
-        TAMAGO_GO_COMMIT: ${TAMAGO_GO_COMMIT:-c6c7dc072c5248c9b668d4ad0af1d7653eb3cfa5}
-      labels: *default-labels
-    restart: unless-stopped
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      SPR_PLUGIN_SOCKET: /state/plugins/spr-tamago-demo/socket.sock
-      TAMAGO_URL: http://192.0.2.2:8080
-    volumes:
-      - "${SUPERDIR:-/home/spr/super}/state/plugins/spr-tamago-demo:/state/plugins/spr-tamago-demo"
-    networks:
-      tamagonet:
-        ipv4_address: 192.0.2.3
-
-networks:
-  tamagonet:
-    name: spr-tamago-demo
-    internal: true
-    driver_opts:
-      com.docker.network.bridge.name: spr-tamago
-    ipam:
-      config:
-        - subnet: 192.0.2.0/24
-          gateway: 192.0.2.1

@@ -30,8 +30,6 @@ required=(
     GO_VERSION
     TAMAGO_VERSION
     TAMAGO_COMMIT
-    GO_NET_VERSION
-    GO_NET_COMMIT
     TAMAGO_GO_VERSION
     TAMAGO_GO_COMMIT
     SOURCE_DATE_EPOCH
@@ -53,13 +51,10 @@ done
 
 go_version="$(awk '$1 == "go" { print $2 }' go.mod)"
 tamago_version="$(awk '$1 == "github.com/usbarmory/tamago" { print $2 }' go.mod)"
-go_net_version="$(awk '$1 == "github.com/usbarmory/go-net" { print $2 }' go.mod)"
 
 [[ "${go_version}" == "${GO_VERSION}" ]]
 [[ "${tamago_version}" == "${TAMAGO_VERSION}" ]]
-[[ "${go_net_version}" == "${GO_NET_VERSION}" ]]
 [[ "${TAMAGO_VERSION}" == *"-${TAMAGO_COMMIT}" ]]
-[[ "${GO_NET_VERSION}" == *"-${GO_NET_COMMIT}" ]]
 [[ "${TAMAGO_GO_VERSION}" == "tamago-go${GO_VERSION}" ]]
 [[ "${BUILDX_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
 [[ "${SOURCE_DATE_EPOCH}" == "0" ]]
