@@ -28,6 +28,7 @@ compose_json="$(docker compose -f docker-compose-kvm.yml config --format json)"
 jq -e '
   (.services | length) == 1 and
   .services["spr-tamago-demo"].runtime == "spr-krun" and
+  .services["spr-tamago-demo"].pull_policy == "missing" and
   .services["spr-tamago-demo"].annotations["krun.cpus"] == "1" and
   .services["spr-tamago-demo"].annotations["krun.ram_mib"] == "256" and
   .services["spr-tamago-demo"].annotations["krun.kernel_path"] == "/tamago-kernel" and
