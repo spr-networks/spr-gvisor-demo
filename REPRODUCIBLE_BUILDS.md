@@ -13,10 +13,12 @@ file, `go.mod`, the Dockerfile, and Compose.
 - the BuildKit image pinned by `BUILDKIT_REF`
 - ARM64 execution through native ARM64 or the binfmt image pinned by
   `BINFMT_REF`
-- `bash`, `git`, `jq`, and network access to Docker Hub, GitHub, and the Go
-  module proxy for the first cold build
+- `bash`, `git`, `jq`, and network access to Docker Hub, GitHub, the Yarn
+  registry, and the Go module proxy for the first cold build
 
-The Dockerfile pins the Go builder image by digest. `go.mod` and `go.sum` pin
+The Dockerfile pins the Node and Go builder images by digest. `frontend/yarn.lock`
+pins the SPR Plugin UI SDK and every frontend package; the SDK git dependency is
+also fixed to `PLUGIN_UI_COMMIT`. `go.mod` and `go.sum` pin
 and authenticate TamaGo and all transitive Go modules. The
 TamaGo compiler wrapper normally shallow-clones a mutable tag; this build
 pre-installs its toolchain from the exact `TAMAGO_GO_COMMIT` instead and checks
@@ -28,7 +30,9 @@ modules to temporary directories and applies checked-in bare-metal overlays.
 Patch anchors are validated so an upstream source-layout change fails the
 build instead of silently producing a different target.
 
-Builds set `SOURCE_DATE_EPOCH=0`, omit Go build IDs and VCS paths, disable
+The frontend stage turns the React application into one inline `index.html`,
+which is embedded into the direct-boot image with `go:embed`. Builds set
+`SOURCE_DATE_EPOCH=0`, omit Go build IDs and VCS paths, disable
 BuildKit's time-varying provenance envelope, and ask the OCI exporter to
 rewrite layer timestamps. The delivered programs are static ARM64 binaries;
 the kernel image is `scratch` and contains no Linux userspace.

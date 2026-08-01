@@ -9,7 +9,8 @@ guest distribution, gateway, or sidecar service.
 The demo starts a real gVisor task from an embedded static Linux/AArch64 ELF.
 gVisor loads the ELF, creates its address space and task, resolves page faults,
 and handles the task's `write(2)` and `exit(2)` syscalls. The captured task
-output is displayed by the plugin UI:
+output is displayed by a React UI built with the
+[`@spr-networks/plugin-ui`](https://github.com/spr-networks/spr-plugin-ui) SDK:
 
 ```text
 Hello World from gVisor Sentry!
@@ -56,6 +57,9 @@ The one `scratch` image contains:
 The image contains no Linux root filesystem or executable guest userspace.
 The container command is deliberately `/unused`: SPR's trusted krun policy
 selects `/gvisor-kernel` before a container process can execute.
+
+The Node frontend builder produces one self-contained HTML file and embeds it
+into the Go image. Neither Node nor loose UI assets are present at runtime.
 
 The direct image includes:
 
@@ -125,9 +129,9 @@ Publish it with:
 ./build_docker_compose.sh --push
 ```
 
-The base image, Go version, TamaGo module/compiler commits, go-net
-version/commit, gVisor pseudo-version/commit, and x/sys version are recorded in
-`reproducible.env`.
+The Node and Go base images, Yarn and Plugin UI SDK versions, TamaGo
+module/compiler commits, go-net version/commit, gVisor pseudo-version/commit,
+and x/sys version are recorded in `reproducible.env`.
 The builder copies the pinned modules to temporary directories and applies
 the checked-in TamaGo/gVisor/x/sys overlays there; downloaded module sources
 are never modified in place.
@@ -144,7 +148,9 @@ network. It does not configure a fixed IP, fixed gateway, or second Linux
 service.
 
 Open **spr-gvisor-demo** in the sidebar. The page is served by the direct guest
-over VirtIO-vsock and shows the output captured from the gVisor task.
+over VirtIO-vsock and shows the output captured from the gVisor task. It follows
+the SPR host theme and displays the exact linked gVisor and TamaGo versions
+reported by the running kernel.
 
 The status endpoint should report:
 
@@ -153,6 +159,8 @@ The status endpoint should report:
   "kernel": "gvisor-sentry",
   "substrate": "tamago",
   "linux_kernel": false,
+  "tamago_version": "v1.26.5-0.20260626120227-bb8159e64f82",
+  "gvisor_version": "v0.0.0-20260730080753-99012c9af411",
   "gvisor": "ready",
   "output": "Hello World from gVisor Sentry!\n",
   "ipc": "virtio-vsock",
@@ -188,6 +196,11 @@ Run the two-clean-build comparison with:
 The direct local build sequence used by the container is:
 
 ```sh
+yarn --cwd frontend install --frozen-lockfile
+yarn --cwd frontend bundle
+mkdir -p kernel/ui
+cp frontend/build/index.html kernel/ui/index.html
+
 work_dir="$(mktemp -d)"
 tamago_dir="$(go list -m -f '{{.Dir}}' github.com/usbarmory/tamago)"
 gvisor_dir="$(go list -m -f '{{.Dir}}' gvisor.dev/gvisor)"
